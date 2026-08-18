@@ -73,9 +73,11 @@ CMT2300A 以 **DIRECT 模式**输出解调后的原始 OOK 码流（GPIO2 → GP
 | 器件 | 型号/规格 | 说明 |
 |---|---|---|
 | 主控 | ESP32-S3-WROOM-1 (N16R8) | 16MB Flash + 8MB PSRAM |
-| 射频 | CMT2300A 收发一体芯片 | 126.33~1020 MHz，(G)FSK/OOK |
+| 射频 | CMT2300A 收发一体模组(尽量购买900M频段的这样在全频段表现都较好，如Ashining/泽耀科技的A22-S900A20D1a
+) | 126.33~1020 MHz，(G)FSK/OOK |
 | 天线 | 315/433/868/915MHz 匹配天线 | 按目标频段选择模块/天线版本 |
 | 供电 | USB-C 5V | 板载 LDO 供电 3.3V |
+![参考无线模组](snapshot/module.png)
 
 ## 接线指导
 
