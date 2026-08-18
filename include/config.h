@@ -1,17 +1,13 @@
 /*
  * config.h — 全局硬件 / 网络 / 默认参数配置
  * ESP32-S3 N16R8 + CMT2300A 射频遥控频率捕获仪
- *
- * 2026-08-14：网页/协议整体移植自参考工程 esp32s3-si4463-spectrum（
- *   WebSocket 0xA5 频谱帧 + cfg/stat/hit/decode JSON + get/set/run/arm/
- *   clear/baseline/save/reset 命令），扫描默认参数与参考工程保持一致。
  */
 #pragma once
 #include <Arduino.h>
 
 // ======================= WiFi =======================
-#define WIFI_SSID       "dm"
-#define WIFI_PASSWORD   "q1w2e3r4dm"
+#define WIFI_SSID       "your-wifi"
+#define WIFI_PASSWORD   "your-password"
 #define WIFI_HOSTNAME   "rfmaster"    // mDNS: http://rfmaster.local
 #define WIFI_TIMEOUT_MS 20000
 // 连不上热点时自动开 AP，方便现场调试；SSID = AP_SSID_PREFIX + "_" + MAC后两节（如 rfmaster_ABCD）
