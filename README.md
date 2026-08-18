@@ -30,6 +30,11 @@
 | 归一化 | 实测峰值自动吸附到常见遥控频点 |
 | OTA 升级 | 集成 ElegantOTA 网页升级，mDNS 自动发现 |
 
+## 运行截图
+![快速频点扫描](snapshot/fast-hop.png)
+![频率范围扫描](snapshot/range-scan.png)
+![解码历史列表](snapshot/decode-history.png)
+
 ## 原理简介
 
 ### 硬件链路
