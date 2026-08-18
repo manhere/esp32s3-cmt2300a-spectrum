@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>RF射频管家</title>
+<style>
+:root{
+  --bg:#f4f6fa; --card:#fff; --line:#e4e9f0; --line2:#eef2f7;
+  --tx:#1e2733; --mut:#6b7787; --acc:#2563eb; --acc2:#0ea5e9;
+  --ok:#10b981; --warn:#f59e0b; --bad:#ef4444; --hold:#f97316; --thr:#d946ef;
+  --grid:#e8edf4; --plot:#fbfcfe; --shadow:0 1px 2px rgba(16,24,40,.05),0 8px 24px -12px rgba(16,24,40,.18);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--tx);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.app{max-width:1500px;margin:0 auto;padding:14px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;color:#fff;flex:none}
+h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+.sub{font-size:12px;color:var(--mut);margin-top:1px}
+.spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;background:var(--card);border:1px solid var(--line);color:var(--mut)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--mut)}
+.dot.on{background:var(--ok);box-shadow:0 0 0 3px rgba(16,185,129,.16)}
+.dot.demo{background:var(--warn);box-shadow:0 0 0 3px rgba(245,158,11,.16)}
+.dot.off{background:var(--bad)}
+.iconbtn{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--mut);cursor:pointer;display:grid;place-items:center;font-size:14px}
+.iconbtn:hover{color:var(--tx);border-color:var(--acc)}
+
+main{display:grid;grid-template-columns:1fr 322px;gap:12px;align-items:start}
+@media(max-width:1000px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.hd{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line2);font-size:13px;font-weight:600}
+.hd .tag{font-weight:400;font-size:12px;color:var(--mut)}
+.legend{margin-left:auto;display:flex;gap:12px;font-size:11px;color:var(--mut);font-weight:400}
+.legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle}
+canvas{display:block;width:100%}
+#spec{height:330px}
+#fall{height:132px;border-top:1px solid var(--line2)}
+@media(max-width:640px){#spec{height:240px}#fall{height:96px}}
+
+/* 捕获结果 */
+.hit{margin-top:12px;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px}
+@media(max-width:760px){.hit{grid-template-columns:1fr}}
+.big{padding:16px 18px}
+.big .lab{font-size:12px;color:var(--mut);letter-spacing:.4px}
+.freq{font:650 clamp(30px,6.4vw,52px)/1.05 "SF Mono",ui-monospace,Menlo,Consolas,monospace;letter-spacing:-1px;margin:6px 0 2px;color:var(--tx);transition:color .2s}
+.freq small{font-size:.42em;font-weight:500;color:var(--mut);margin-left:6px;letter-spacing:0}
+.matched .freq{color:var(--ok)}
+.nomatch .freq{color:var(--warn)}
+.meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{font-size:11.5px;padding:3px 8px;border-radius:6px;background:var(--line2);color:var(--mut);border:1px solid transparent}
+.chip b{color:var(--tx);font-weight:600}
+.chip.g{background:rgba(16,185,129,.12);color:#0b7a5b;border-color:rgba(16,185,129,.25)}
+.pulse{animation:pf .7s ease}
+@keyframes pf{0%{background:rgba(37,99,235,.16)}100%{background:transparent}}
+.hist{max-height:196px;overflow:auto}
+.hrow{display:flex;align-items:center;gap:8px;padding:7px 13px;border-bottom:1px solid var(--line2);font-size:12.5px}
+.hrow:last-child{border-bottom:none}
+.hf{font:600 13px ui-monospace,Menlo,Consolas,monospace;min-width:74px}
+.hf.g{color:var(--ok)} .hf.w{color:var(--warn)}
+.ht{color:var(--mut);font-size:11px;margin-left:auto;font-variant-numeric:tabular-nums}
+.empty{padding:22px 14px;text-align:center;color:var(--mut);font-size:12.5px}
+/* 解码记录表格 */
+.dechist{width:100%;border-collapse:collapse;font-size:12.5px}
+.dechist thead th{position:sticky;top:0;background:var(--card);color:var(--mut);font-weight:500;text-align:left;padding:5px 10px;border-bottom:1px solid var(--line2);font-size:11.5px;letter-spacing:.3px}
+.dechist td{padding:6px 10px;border-bottom:1px solid var(--line2);vertical-align:top;font-variant-numeric:tabular-nums}
+.dechist tr:last-child td{border-bottom:none}
+.dechist .hf{font:600 13px ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+.dechist .hf.g{color:var(--ok)}
+.dechist .dec{color:var(--mut);font-size:11px;margin-left:4px}
+.dechist .fq{white-space:nowrap}
+.dechist .bc{white-space:nowrap;color:var(--mut)}
+.dechist .nm{white-space:nowrap}
+.dechist .bin{font:500 11px ui-monospace,Menlo,Consolas,monospace;color:var(--mut);word-break:break-all;max-width:200px}
+.dechist .ht{color:var(--mut);font-size:11px;white-space:nowrap}
+
+/* 解码历史弹窗 */
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);width:min(780px,95vw);max-height:86vh;display:flex;flex-direction:column;overflow:hidden}
+.modal-hd{display:flex;align-items:center;gap:8px;padding:12px 16px;font-size:13.5px;font-weight:600;border-bottom:1px solid var(--line2)}
+.modal-hd .tag{font-weight:400;font-size:12px;color:var(--mut)}
+.modal-tools{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.modal-body{overflow:auto;padding:8px 16px 16px;flex:1}
+.modal-body .dechist thead th{position:sticky;top:-8px;background:var(--card);z-index:1}
+
+/* 控制面板 */
+.panel{display:flex;flex-direction:column;gap:12px}
+.sec{padding:12px 13px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.f{margin-bottom:9px}
+.f:last-child{margin-bottom:0}
+label{display:block;font-size:11.5px;color:var(--mut);margin-bottom:4px}
+input[type=number],input[type=text],select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--plot);color:var(--tx);font-size:13px;font-variant-numeric:tabular-nums;outline:none}
+input:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--tx);padding:8px 10px;border-radius:8px;font-size:12.5px;cursor:pointer;font-weight:500;transition:.15s}
+.btn:hover{border-color:var(--acc);color:var(--acc)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.pri:hover{filter:brightness(1.08);color:#fff}
+.btn.stop{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn.stop:hover{filter:brightness(1.08);color:#fff}
+.btn.on{background:rgba(16,185,129,.14);border-color:var(--ok);color:#0b7a5b}
+.btn.mini{padding:3px 8px;font-size:11px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets .btn{padding:5px 9px;font-size:11.5px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:7px 10px;font-size:12px}
+.st{display:flex;justify-content:space-between;gap:6px}
+.st span{color:var(--mut)} .st b{font-weight:600;font-variant-numeric:tabular-nums}
+.note{font-size:11px;color:var(--mut);line-height:1.5;margin-top:8px}
+.banner{padding:8px 12px;border-radius:9px;font-size:12px;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.banner.warn{background:rgba(245,158,11,.13);color:#8a5a05;border:1px solid rgba(245,158,11,.3)}
+.sw{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--mut);cursor:pointer;user-select:none}
+.sw input{accent-color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M4 16v-3M8 16V8M12 16V4M16 16v-6M20 16v-2"/><path d="M2 20h20" opacity=".5"/>
+      </svg>
+    </div>
+    <div>
+      <h1>RF 遥控频率捕获仪</h1>
+      <div class="sub">ESP32-S3 + CMT2300A · 按下遥控器即刻识别发射频率</div>
+    </div>
+    <div class="spacer"></div>
+    <span class="pill"><i class="dot" id="dLink"></i><span id="tLink">连接中…</span></span>
+    <span class="pill" id="pRadio"><i class="dot"></i><span>射频</span></span>
+  </header>
+
+  <div class="banner warn" id="banner" style="display:none">
+    <b>模拟模式</b><span id="bannerTxt">未连接到设备，当前显示的是本地模拟数据，用于预览界面。</span>
+  </div>
+
+  <main>
+    <div>
+      <div class="card">
+        <div class="hd">实时频谱 <span class="tag" id="rangeLbl">—</span>
+          <div class="legend">
+            <span><i style="background:var(--acc)"></i>实时</span>
+            <span><i style="background:var(--hold)"></i>最大保持</span>
+            <span><i style="background:var(--mut);opacity:.7"></i>本底</span>
+            <span><i style="background:var(--thr);opacity:.9"></i>触发门限</span>
+          </div>
+        </div>
+        <canvas id="spec"></canvas>
+        <canvas id="fall"></canvas>
+      </div>
+
+      <div class="hit">
+        <div class="card big" id="hitCard">
+          <div class="lab">最近一次捕获</div>
+          <div class="freq" id="hitFreq">--<small>MHz</small></div>
+          <div class="lab" id="hitSub">等待遥控器按键…按住按钮 1 秒效果最好</div>
+          <div class="meta" id="hitMeta"></div>
+        </div>
+        <div class="card">
+          <div class="hd">捕获记录 <span class="tag" id="hitCnt">0</span>
+            <button class="btn" id="btnClearHist" style="margin-left:auto;padding:3px 8px;font-size:11px">清空</button>
+          </div>
+          <div class="hist" id="hist"><div class="empty">暂无记录</div></div>
+        </div>
+      </div>
+
+      <div class="card" id="decodeCard" style="margin-top:12px">
+        <div class="hd">按键解码 <span class="tag" id="decStat">自动解码已关闭</span>
+          <button class="btn" id="btnHist" style="margin-left:auto;padding:3px 8px;font-size:11px">解码历史</button>
+        </div>
+        <div class="big" style="padding:14px 16px">
+          <div class="freq" id="decFreq" style="font-size:clamp(24px,5vw,38px)">--<small>MHz</small></div>
+          <div class="lab" id="decSub">开启“自动解码”后进入【快嗅探】：在常见遥控频点间高速轮转，遥控器按一下即实时锁频并解出按键编码</div>
+          <div class="meta" id="decMeta"></div>
+        </div>
+        <div class="hd">解码记录 <span class="tag" id="decCnt">0</span>
+          <button class="btn" id="btnClearDec" style="margin-left:auto;padding:3px 8px;font-size:11px">清空</button>
+        </div>
+        <div class="hist" id="decHist"><div class="empty">暂无解码</div></div>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="card sec">
+        <div class="btns" style="margin-bottom:10px">
+          <button class="btn pri" id="btnRun">▶ 开始扫描</button>
+          <button class="btn on" id="btnArm">◉ 已布防</button>
+        </div>
+        <div class="btns">
+          <button class="btn" id="btnClear">清除峰值保持</button>
+          <button class="btn" id="btnBase">重置噪声本底</button>
+        </div>
+      </div>
+
+      <div class="card sec">
+        <div class="f"><label>扫描模式</label>
+          <div class="presets">
+            <button class="btn" id="btnModeRange" data-mode="0">范围扫频</button>
+            <button class="btn on" id="btnModePreset" data-mode="1">常见频点</button>
+          </div>
+          <div class="note" id="modeNote"></div>
+        </div>
+        <div class="f"><label>快速预设</label>
+          <div class="presets">
+            <button class="btn" data-p="300,330,250">315M 区</button>
+            <button class="btn" data-p="425,445,250">433M 区</button>
+            <button class="btn" data-p="855,930,500">868/915M</button>
+            <button class="btn" data-p="300,450,500">300–450 全</button>
+            <button class="btn" data-p="300,950,2000">全频段粗扫</button>
+          </div>
+          <div class="note">范围模式：填入一段连续范围。常见频点模式：从标准遥控频点中筛出该区间内的频点。</div>
+        </div>
+        <div id="rowRange">
+        <div class="row">
+          <div class="f"><label>起始频率 (MHz)</label><input type="number" id="fStart" step="0.1" min="119" max="1049"></div>
+          <div class="f"><label>终止频率 (MHz)</label><input type="number" id="fStop" step="0.1" min="120" max="1050"></div>
+        </div>
+        <div class="row">
+          <div class="f"><label>步进 (kHz)</label><input type="number" id="fStep" step="10" min="10" max="5000"></div>
+          <div class="f"><label>驻留 (µs)</label><input type="number" id="fDwell" step="20" min="60" max="5000"></div>
+        </div>
+        </div>
+        <div class="f" id="rowPreset" style="display:none">
+          <label>扫描频点 (MHz，逗号分隔)</label>
+          <input type="text" id="fPreset">
+          <div class="note">直接跳到这些频点测量 RSSI，想增删频点改这里即可。</div>
+        </div>
+        <div class="row">
+          <div class="f"><label>触发门限 (dB)</label><input type="number" id="fThr" step="1" min="2" max="60"></div>
+          <div class="f"><label>保持衰减 (dB/帧)</label><input type="number" id="fDecay" step="0.05" min="0" max="20"></div>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line2)">
+          <div style="font-size:12px;color:var(--mut);font-weight:600;margin-bottom:6px">归一化</div>
+          <label class="sw"><input type="checkbox" id="cNorm" checked>归一化到常见频点</label>
+          <div class="note" style="margin:4px 0 8px">开启：命中后锁定/解码使用归一化频点；关闭：使用实测峰值频率。</div>
+          <div class="f"><label>归一化容差 (MHz)</label><input type="number" id="fNormTol" step="0.1" min="0.05" max="10"></div>
+          <div class="f"><label>归一化频点 (MHz，逗号分隔)</label><input type="text" id="fNormList"></div>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button class="btn pri" id="btnApply">应用</button>
+          <button class="btn" id="btnSave">保存到设备</button>
+        </div>
+        <div class="note">步进建议 ≤ 接收带宽（约 150–200 kHz），否则相邻频点之间会漏扫。驻留时间越小扫得越快，但太小会因 PLL 未锁定而读到偏低的 RSSI。</div>
+      </div>
+
+      <div class="card sec">
+        <div class="stats">
+          <div class="st"><span>扫描速率</span><b id="sSps">—</b></div>
+          <div class="st"><span>频点数</span><b id="sBins">—</b></div>
+          <div class="st"><span>当前峰值</span><b id="sPeak">—</b></div>
+          <div class="st"><span>噪声本底</span><b id="sFloor">—</b></div>
+          <div class="st"><span>WiFi强度</span><b id="sRssi">—</b></div>
+          <div class="st"><span>可用内存</span><b id="sHeap">—</b></div>
+          <div class="st"><span>运行时间</span><b id="sUp">—</b></div>
+          <div class="st"><span>射频芯片</span><b id="sPart">—</b></div>
+        </div>
+        <div style="display:flex;gap:14px;margin-top:11px;flex-wrap:wrap">
+          <label class="sw"><input type="checkbox" id="cBeep" checked>命中提示音</label>
+          <label class="sw"><input type="checkbox" id="cFall" checked>瀑布图</label>
+          <label class="sw"><input type="checkbox" id="cAuto">自动解码</label>
+        </div>
+      </div>
+      <button class="btn stop" id="btnReset" style="margin-top:8px;width:100%">恢复初始配置</button>
+      <button class="btn" id="btnUpd" style="margin-top:8px;width:100%">系统升级</button>
+    </aside>
+  </main>
+</div>
+
+<div class="modal-mask" id="histModal" style="display:none" onclick="if(event.target===this)closeHist()">
+  <div class="modal">
+    <div class="modal-hd">解码历史 <span class="tag" id="histCnt">0</span>
+      <button class="btn" id="btnHistClose" style="margin-left:auto;padding:3px 8px;font-size:11px">✕ 关闭</button>
+    </div>
+    <div class="modal-tools">
+      <button class="btn" id="btnHistExport">导出 JSON</button>
+      <button class="btn stop" id="btnHistClear">清空</button>
+    </div>
+    <div class="modal-body" id="histBody"><div class="empty">暂无历史</div></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================ 状态 ============================ */
+const S = {
+  bins:0, start:420e6, step:100e3,
+  live:new Uint8Array(0), hold:new Uint8Array(0), base:null,
+  freqs:null, preset:false,          // 预设模式：每个 bin 的真实频率(MHz)
+  cfg:{start:420,stop:450,step:500,dwell:200,thr:30,decay:0.5,normtol:1.5,normon:true,
+       mode:1, preset:"303,306,310,315,330,350,370,390,418,430.5,431.5,432.8,433.92,434.5,580,868.35,915",
+       normlist:"303,306,310,315,330,350,370,390,418,430.5,431.5,432.8,433.92,434.5,580,868.35,915",
+       run:true,arm:true,auto:false,radio:false,demo:false,part:"-"},
+  hits:[], decodes:[], demo:false, connected:false, hover:null, lastFrame:0, dirty:false
+};
+// 标准常见遥控频点库（与 DEF_PRESET_LIST 一致）。"常见频点"模式下，快速预设按钮按区间从中筛选。
+const BASE_FREQS = [303,306,310,315,330,350,370,390,418,430.5,431.5,432.8,433.92,434.5,580,868.35,915];
+const $ = id => document.getElementById(id);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const raw2dbm = r => r*0.5-134;
+
+/* ============================ 调色板 ============================ */
+let P = {};
+function readPalette(){
+  const c = getComputedStyle(document.documentElement);
+  const g = n => c.getPropertyValue(n).trim();
+  P = {tx:g('--tx'),mut:g('--mut'),acc:g('--acc'),grid:g('--grid'),plot:g('--plot'),
+       hold:g('--hold'),thr:g('--thr'),bad:g('--bad'),line:g('--line'),ok:g('--ok')};
+}
+
+/* ============================ WebSocket ============================ */
+let ws=null, wsTries=0, reconnT=null;
+function wsUrl(){ return (location.protocol==='https:'?'wss://':'ws://') + location.host + '/ws'; }
+function connect(){
+  if(location.protocol==='file:'){ goDemo('本地打开的页面无法连接设备'); return; }
+  try{ ws = new WebSocket(wsUrl()); }catch(e){ goDemo('WebSocket 创建失败'); return; }
+  ws.binaryType='arraybuffer';
+  ws.onopen = ()=>{ wsTries=0; S.connected=true; S.demo=false; $('banner').style.display='none';
+                    if(S.demoTimer){clearInterval(S.demoTimer);S.demoTimer=null;}
+                    setLink(true); updRadioPill(); ws.send(JSON.stringify({cmd:'get'})); };
+  ws.onmessage = ev => { if(typeof ev.data==='string') onText(ev.data); else onBin(ev.data); };
+  ws.onclose = ()=>{ S.connected=false; setLink(false);
+      wsTries++;
+      if(wsTries>=2 && !S.demo) goDemo('无法连接到设备 ('+location.host+')');
+      clearTimeout(reconnT); reconnT=setTimeout(connect, Math.min(1200*wsTries,6000)); };
+  ws.onerror = ()=>{ try{ws.close();}catch(e){} };
+}
+function send(o){ if(ws && ws.readyState===1) ws.send(JSON.stringify(o)); }
+function setLink(on){
+  $('dLink').className = 'dot ' + (on?'on':(S.demo?'demo':'off'));
+  $('tLink').textContent = on ? (location.host||'已连接') : (S.demo?'模拟模式':'离线');
+}
+function onText(t){
+  let d; try{ d=JSON.parse(t);}catch(e){return;}
+  if(d.type==='cfg'){
+    Object.assign(S.cfg,d);
+    if(d.mode===1){ S.freqs=(d.preset||'').split(',').map(parseFloat).filter(x=>x>0); S.preset=true; }
+    else { S.freqs=null; S.preset=false; }
+    fillForm(); updRadioPill();
+  }
+  else if(d.type==='stat'){ updStat(d); }
+  else if(d.type==='hit'){ onHit(d); }
+  else if(d.type==='decode'){ onDecode(d); }
+  else if(d.type==='hlist'){ HIST=d.list||[]; renderHistModal(); }
+  else if(d.type==='hclear'){ HIST=[]; renderHistModal(); }
+  else if(d.type==='hadd'){ if(d.ok) alert('已保存到解码历史'); else if(d.dup) alert('该记录已存在（同码同频同te），未重复保存'); else alert('保存失败'); }
+  else if(d.type==='hdel'||d.type==='hupd'){ if($('histModal').style.display!=='none') send({cmd:'hlist'}); }
+}
+function onBin(buf){
+  const v = new DataView(buf);
+  if(v.getUint8(0)!==0xA5) return;
+  const type = v.getUint8(1);
+  if(type===0x02){                       // 频率表：预设模式每个 bin 的真实频率(Hz)
+    const n = v.getUint16(4,true);
+    const arr = new Float64Array(n);
+    for(let i=0;i<n;i++) arr[i] = v.getUint32(6+i*4,true)/1e6;
+    S.freqs = arr; S.preset = (n>0);
+    return;
+  }
+  if(type!==0x01) return;                // 频谱帧
+  const n = v.getUint16(12,true);
+  S.start = v.getUint32(4,true); S.step = v.getUint32(8,true); S.bins = n;
+  const f = v.getUint8(14);
+  S.preset = !!(f & 0x02);
+  S.live = new Uint8Array(buf,16,n);
+  S.hold = (f&1) ? new Uint8Array(buf,16+n,n) : S.live;
+  onFrame();
+}
+
+/* ============================ 模拟模式 ============================ */
+function goDemo(msg){
+  S.demo = true; $('banner').style.display='flex';
+  $('bannerTxt').textContent = msg + '，当前显示本地模拟数据用于预览界面。';
+  setLink(false); updRadioPill();
+  if(!S.demoTimer) S.demoTimer = setInterval(demoTick, 70);
+}
+// 与设备端 Spectrum::calcBins 完全一致：根据 起始/终止(MHz)/步进(kHz) 计算实际生效的
+// 起始Hz、步进Hz、点数；点数超 512 时自动把步进变粗以扫满整段，避免 demo 与真机不一致。
+function calcBins(startMHz, stopMHz, stepkHz){
+  let startHz = Math.round(startMHz*1e6), stopHz = Math.round(stopMHz*1e6);
+  if (stopHz <= startHz) stopHz = startHz + Math.max(1, Math.round(stepkHz*1000))*10;
+  let stepHz = Math.round(stepkHz*1000);
+  if (stepHz < 10000) stepHz = 10000;          // 不小于 10 kHz
+  const span = stopHz - startHz;
+  let n = Math.floor(span/stepHz) + 1;
+  if (n > 512){                                 // 点数超限 → 自动放大步进
+    stepHz = Math.floor((Math.floor(span/511) + 999) / 1000) * 1000;
+    n = Math.floor(span/stepHz) + 1;
+    if (n > 512) n = 512;
+  }
+  return { startHz, stepHz, n };
+}
+// 实际扫描到的终止频率(MHz) = start + (n-1)*step
+function effStop(startMHz, stopMHz, stepkHz){
+  const b = calcBins(startMHz, stopMHz, stepkHz);
+  return b.startHz/1e6 + (b.n-1)*b.stepHz/1e6;
+}
+let dBurst={until:0,f:433.92};
+function demoTick(){
+  const c=S.cfg;
+  let freqs, n;
+  if(c.mode===1){                            // 预设模式：直接跳到常见频点
+    freqs=(c.preset||'').split(',').map(parseFloat).filter(x=>x>0);
+    n=freqs.length; S.start=freqs[0]*1e6; S.step=0; S.preset=true; S.freqs=freqs;
+  } else {                                   // 范围模式：连续扫频
+    const rb=calcBins(c.start,c.stop,c.step);   // 与真机一致：细步进+宽频带会自动变粗
+    S.start=rb.startHz; S.step=rb.stepHz; S.preset=false;
+    n=rb.n;
+  }
+  if(S.bins!==n){ S.bins=n; S.live=new Uint8Array(n); S.hold=new Uint8Array(n); S.base=null; S.holdF=new Float32Array(n); }
+  const now=performance.now();
+  if(now>dBurst.until+3500+Math.random()*3500 && c.run){
+    const pool = (c.mode===1)?freqs
+      : (c.normlist||'').split(',').map(parseFloat).filter(x=>x>=c.start && x<=c.stop);
+    const pl = pool.length?pool:[(c.start+c.stop)/2];
+    dBurst.f = pl[Math.floor(Math.random()*pl.length)] + (Math.random()-.5)*0.35;
+    dBurst.until = now + 500 + Math.random()*600;
+  }
+  const act = c.run && now<dBurst.until;
+  for(let i=0;i<n;i++){
+    const f = (c.mode===1)?freqs[i]:(S.start/1e6 + i*S.step/1e6);
+    let dbm = -108 + Math.random()*3 + 2*Math.sin(f*0.35);
+    if(act){ const d=f-dBurst.f;
+      dbm += 56*Math.exp(-(d*d)/(2*0.06)) + 11*Math.exp(-(d*d)/(2*1.4));
+    }
+    S.live[i]=clamp(Math.round((dbm+134)*2),0,255);
+  }
+  // 本地最大保持 + 触发（模拟固件逻辑）
+  const dec=c.decay*2; let bd=-999,bi=0;
+  for(let i=0;i<n;i++){
+    let h=S.holdF[i]-dec; if(S.live[i]>h) h=S.live[i]; S.holdF[i]=h; S.hold[i]=clamp(Math.round(h),0,255);
+  }
+  onFrame();
+  if(now-(S.demoStat||0)>1000){
+    S.demoStat=now;
+    let pv=0,fl=0;for(let i=0;i<n;i++){if(S.holdF[i]>pv)pv=S.holdF[i];fl+=S.base?S.base[i]:0;}
+    updStat({sps:14.3,peak:raw2dbm(pv),floor:raw2dbm(fl/n),rssi:-52,heap:271000,up:Math.floor(now/1000)});
+    $('sPart').textContent='模拟';
+  }
+  if(!c.arm||!c.run) return;
+  const b=S.base; if(!b) return;
+  for(let i=0;i<n;i++){ const d=(S.holdF[i]-b[i])*0.5; if(d>bd){bd=d;bi=i;} }
+  if(bd>=c.thr && now> (S.demoCool||0)){
+    S.demoCool = now+1400;
+    setTimeout(()=>{
+      let p=bi,dd=0;
+      if(p>0&&p+1<n){const y1=S.holdF[p-1]*.5,y2=S.holdF[p]*.5,y3=S.holdF[p+1]*.5,de=y1-2*y2+y3;
+        if(Math.abs(de)>1e-3) dd=clamp(.5*(y1-y3)/de,-1,1);}
+      const peak=(S.start+(p+dd)*S.step)/1e6;
+      const r=(c.normon!==false)?normalizedLocal(peak,c.normlist,c.normtol):{normlist:0,cand:[]};
+      onHit({type:'hit',peak:+peak.toFixed(3),normlist:r.normalized,dbm:+raw2dbm(S.holdF[p]).toFixed(1),
+             floor:+raw2dbm(b[p]).toFixed(1),delta:+bd.toFixed(1),dur:Math.round(600+Math.random()*400),cand:r.cand});
+    },700);
+  }
+}
+function normalizedLocal(peak,listStr,tol){
+  const L=(listStr||'').split(',').map(parseFloat).filter(x=>x>0);
+  const cand=L.map(f=>({f,d:Math.abs(f-peak)})).sort((a,b)=>a.d-b.d).slice(0,3)
+              .map(o=>({f:o.f,d:+o.d.toFixed(3)}));
+  let normalized=0,best=1e9;
+  L.forEach((f,i)=>{
+    let half=1e9; L.forEach((g,j)=>{ if(i!==j) half=Math.min(half,Math.abs(f-g)/2); });
+    const t=Math.min(tol,half), d=Math.abs(f-peak);
+    if(d<=t && d<best){best=d;normalized=f;}
+  });
+  return {normalized,cand};
+}
+
+/* ============================ 帧处理 ============================ */
+function onFrame(){
+  const n=S.bins; if(!n) return;
+  if(!S.base || S.base.length!==n){ S.base=new Float32Array(n); for(let i=0;i<n;i++)S.base[i]=S.live[i]; }
+  else for(let i=0;i<n;i++){ const v=S.live[i]; S.base[i]+= (v<S.base[i]?0.30:0.01)*(v-S.base[i]); }
+  if(S.preset && S.freqs && S.freqs.length===n){
+    $('rangeLbl').textContent = '常见频点扫频 · '+n+' 点（'+S.freqs[0].toFixed(2)+' – '+S.freqs[n-1].toFixed(2)+' MHz）';
+  } else {
+    $('rangeLbl').textContent = (S.start/1e6).toFixed(2)+' – '+((S.start+(n-1)*S.step)/1e6).toFixed(2)+' MHz · '+n+' 点';
+  }
+  $('sBins').textContent = n;
+  S.lastFrame = performance.now();
+  S.dirty = true;            // 标记脏，由 rAF 渲染循环合并重绘（每屏至多画一次）
+}
+
+/* ============================ 绘图 ============================ */
+const cv=$('spec'), cx=cv.getContext('2d');
+const wf=$('fall'), wx=wf.getContext('2d',{willReadFrequently:false});
+let W=0,H=0,WW=0,WH=0,DPR=1;
+let wfBuf=null;               // 瀑布图 ImageData 环形缓冲（DPR=1，整行 copyWithin 下移）
+let wfPlot=[0,0,0];           // 瀑布背景色 RGB（由 P.plot 解析，wfAlloc 时刷新）
+const PAD={l:44,r:12,t:12,b:22};
+const DB_MIN=-125, DB_MAX=-18;
+// 任意 CSS 颜色 -> [r,g,b]（用离屏 canvas 解析，兼容 #hex / rgb() / 变量）
+const _pc=document.createElement('canvas').getContext('2d');
+function cssRGB(s){
+  _pc.fillStyle='#000'; _pc.fillStyle=(s||'#fff'); _pc.fillRect(0,0,1,1);
+  const d=_pc.getImageData(0,0,1,1).data; return [d[0],d[1],d[2]];
+}
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W=cv.clientWidth; H=cv.clientHeight;
+  cv.width=W*DPR; cv.height=H*DPR; cx.setTransform(DPR,0,0,DPR,0,0);
+  WW=wf.clientWidth; WH=wf.clientHeight;
+  wf.width=WW; wf.height=WH; wx.setTransform(1,0,0,1,0,0);   // 瀑布固定 DPR=1（热力图无需 2x）
+  wfAlloc();
+  wx.fillStyle=P.plot||'#fff'; wx.fillRect(0,0,WW,WH);
+  draw();
+}
+// 分配/重置瀑布 ImageData 环形缓冲，整缓冲填背景色
+function wfAlloc(){
+  if(!WW||!WH) return;
+  wfBuf = wx.createImageData(WW, WH);
+  wfPlot = cssRGB(P.plot||'#fff');
+  const d=wfBuf.data, p=wfPlot;
+  for(let i=0;i<d.length;i+=4){ d[i]=p[0]; d[i+1]=p[1]; d[i+2]=p[2]; d[i+3]=255; }
+}
+window.addEventListener('resize',()=>{clearTimeout(S.rt);S.rt=setTimeout(resize,120);});
+
+const y4db = d => PAD.t + (DB_MAX-d)/(DB_MAX-DB_MIN)*(H-PAD.t-PAD.b);
+// 第 i 个 bin 的真实频率(MHz)：预设模式用频率表，范围模式用 start+i*step
+function binFreq(i){
+  if(S.preset && S.freqs && S.freqs.length===S.bins) return S.freqs[i];
+  return S.start/1e6 + (i*S.step)/1e6;
+}
+// 频率(MHz) -> x 像素：两端对齐，预设模式按真实频率展开（相邻 bin 间距反映真实间隔）
+function freqToX(fMHz){
+  const n=S.bins; if(!n) return PAD.l;
+  const f0=binFreq(0), f1=binFreq(n-1);
+  const t=(f1-f0)<1e-6?0:(fMHz-f0)/(f1-f0);
+  return PAD.l + clamp(t,0,1)*(W-PAD.l-PAD.r);
+}
+const x4i  = i => freqToX(binFreq(i));
+
+function draw(){
+  if(!W) return;
+  cx.clearRect(0,0,W,H);
+  const pw=W-PAD.l-PAD.r, ph=H-PAD.t-PAD.b, n=S.bins;
+  cx.fillStyle=P.plot; cx.fillRect(PAD.l,PAD.t,pw,ph);
+
+  // 网格 + dBm 刻度
+  cx.strokeStyle=P.grid; cx.lineWidth=1; cx.fillStyle=P.mut;
+  cx.font='10px ui-monospace,Menlo,Consolas,monospace'; cx.textAlign='right'; cx.textBaseline='middle';
+  for(let d=DB_MAX;d>=DB_MIN;d-=20){
+    const y=Math.round(y4db(d))+.5;
+    cx.beginPath();cx.moveTo(PAD.l,y);cx.lineTo(W-PAD.r,y);cx.stroke();
+    cx.fillText(d, PAD.l-6, y);
+  }
+  if(!n){ cx.fillStyle=P.mut;cx.textAlign='center';cx.fillText('等待数据…',W/2,H/2); return; }
+
+  // 频率刻度
+  const f0=binFreq(0), f1=binFreq(n-1);
+  const ticks=Math.max(3,Math.min(9,Math.floor(pw/95)));
+  cx.textAlign='center';cx.textBaseline='top';
+  for(let k=0;k<=ticks;k++){
+    const idx=Math.round(k/ticks*(n-1));
+    const f=binFreq(idx);
+    const x=Math.round(freqToX(f))+.5;
+    cx.strokeStyle=P.grid;cx.beginPath();cx.moveTo(x,PAD.t);cx.lineTo(x,PAD.t+ph);cx.stroke();
+    cx.fillStyle=P.mut;cx.fillText(f.toFixed((f1-f0)>80?0:2), x, PAD.t+ph+5);
+  }
+
+  // 预设模式：每个频点补一条网格竖线（x 用 freqToX，与柱中心精确对齐）；
+  // 刻度标签仍按密度抽稀（上面 ticks 循环），避免密集频点标签重叠。
+  // alpha .7：比主刻度线(1.0)略淡但清晰可见（此前 .35 太淡+强信号柱覆盖，几乎看不出）。
+  if(S.preset){
+    cx.strokeStyle=P.grid;cx.globalAlpha=.7;cx.lineWidth=1;
+    for(let i=0;i<n;i++){
+      const x=Math.round(freqToX(binFreq(i)))+.5;
+      cx.beginPath();cx.moveTo(x,PAD.t);cx.lineTo(x,PAD.t+ph);cx.stroke();
+    }
+    cx.globalAlpha=1;
+  }
+
+  // 本底 + 门限
+  if(S.base){
+    cx.strokeStyle=P.mut;cx.globalAlpha=.55;cx.lineWidth=1;cx.beginPath();
+    for(let i=0;i<n;i++){const x=x4i(i,n),y=y4db(raw2dbm(S.base[i]));i?cx.lineTo(x,y):cx.moveTo(x,y);}
+    cx.stroke();
+    cx.strokeStyle=P.thr;cx.globalAlpha=.9;cx.setLineDash([5,4]);cx.beginPath();
+    for(let i=0;i<n;i++){const x=x4i(i,n),y=y4db(raw2dbm(S.base[i])+S.cfg.thr);i?cx.lineTo(x,y):cx.moveTo(x,y);}
+    cx.stroke();cx.setLineDash([]);cx.globalAlpha=1;
+  }
+
+  if(S.preset){                           // 离散频点：用柱状图，每根柱子对应一个频点
+    const bw=Math.max(1, Math.min(3, (pw/n)*0.012));
+    for(let i=0;i<n;i++){
+      const x=freqToX(binFreq(i));
+      const yh=y4db(raw2dbm(S.hold[i])), yl=y4db(raw2dbm(S.live[i]));
+      cx.fillStyle=P.hold;cx.globalAlpha=.55;cx.fillRect(x-bw/2, yh, bw, (PAD.t+ph)-yh);
+      cx.globalAlpha=1;cx.fillStyle=P.acc;cx.fillRect(x-bw/2, yl, bw, (PAD.t+ph)-yl);
+    }
+  } else {
+    // 最大保持（连线）
+    cx.strokeStyle=P.hold;cx.lineWidth=1.6;cx.beginPath();
+    for(let i=0;i<n;i++){const x=x4i(i),y=y4db(raw2dbm(S.hold[i]));i?cx.lineTo(x,y):cx.moveTo(x,y);}
+    cx.stroke();
+
+    // 实时轨迹（带渐变填充）
+    const gr=cx.createLinearGradient(0,PAD.t,0,PAD.t+ph);
+    gr.addColorStop(0, 'rgba(37,99,235,.30)');
+    gr.addColorStop(1, 'rgba(37,99,235,.02)');
+    cx.beginPath();cx.moveTo(PAD.l,PAD.t+ph);
+    for(let i=0;i<n;i++)cx.lineTo(x4i(i),y4db(raw2dbm(S.live[i])));
+    cx.lineTo(W-PAD.r,PAD.t+ph);cx.closePath();cx.fillStyle=gr;cx.fill();
+    cx.strokeStyle=P.acc;cx.lineWidth=1.4;cx.beginPath();
+    for(let i=0;i<n;i++){const x=x4i(i),y=y4db(raw2dbm(S.live[i]));i?cx.lineTo(x,y):cx.moveTo(x,y);}
+    cx.stroke();
+  }
+
+  // 峰值标记
+  let pi=0,pv=-1;for(let i=0;i<n;i++)if(S.hold[i]>pv){pv=S.hold[i];pi=i;}
+  const px=x4i(pi,n), py=y4db(raw2dbm(pv));
+  cx.fillStyle=P.hold;cx.beginPath();cx.arc(px,py,3,0,7);cx.fill();
+  const lbl=binFreq(pi).toFixed(2)+' MHz  '+raw2dbm(pv).toFixed(0)+' dBm';
+  cx.font='11px ui-monospace,Menlo,Consolas,monospace';
+  const tw=cx.measureText(lbl).width+10;
+  let lx=clamp(px-tw/2,PAD.l,W-PAD.r-tw), ly=clamp(py-22,PAD.t+2,H);
+  cx.fillStyle='rgba(255,255,255,.94)';
+  cx.strokeStyle=P.line;cx.lineWidth=1;
+  roundRect(cx,lx,ly,tw,17,5);cx.fill();cx.stroke();
+  cx.fillStyle=P.tx;cx.textAlign='left';cx.textBaseline='middle';cx.fillText(lbl,lx+5,ly+9);
+
+  // 游标
+  if(S.hover!==null && n){
+    const i=clamp(Math.round((S.hover-PAD.l)/(pw||1)*(n-1)),0,n-1);
+    const x=x4i(i,n);
+    cx.strokeStyle=P.acc;cx.globalAlpha=.45;cx.setLineDash([3,3]);
+    cx.beginPath();cx.moveTo(x,PAD.t);cx.lineTo(x,PAD.t+ph);cx.stroke();
+    cx.setLineDash([]);cx.globalAlpha=1;
+    const s=binFreq(i).toFixed(3)+' MHz · '+raw2dbm(S.live[i]).toFixed(1)+' dBm';
+    cx.font='11px ui-monospace,Menlo,Consolas,monospace';
+    const w2=cx.measureText(s).width+10, xx=clamp(x+6,PAD.l,W-PAD.r-w2);
+    cx.fillStyle='rgba(255,255,255,.94)';
+    cx.strokeStyle=P.line;roundRect(cx,xx,PAD.t+4,w2,17,5);cx.fill();cx.stroke();
+    cx.fillStyle=P.tx;cx.textAlign='left';cx.fillText(s,xx+5,PAD.t+12.5);
+  }
+}
+function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);
+  c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+cv.addEventListener('mousemove',e=>{const r=cv.getBoundingClientRect();S.hover=e.clientX-r.left;S.dirty=true;});
+cv.addEventListener('mouseleave',()=>{S.hover=null;S.dirty=true;});
+
+/* 瀑布图 */
+function turbo(t){
+  t=clamp(t,0,1);
+  const r=clamp(34.61+t*(1172.33+t*(-10793.56+t*(33300.12+t*(-38394.49+t*14825.05)))),0,255);
+  const g=clamp(23.31+t*(557.33+t*(1225.33+t*(-3574.96+t*(3520.32-1548.17*t)))),0,255);
+  const b=clamp(27.2+t*(3211.1+t*(-15327.97+t*(27814+t*(-22569.18+6838.66*t)))),0,255);
+  return 'rgb('+(r|0)+','+(g|0)+','+(b|0)+')';
+}
+// turbo 的数值版（返回 [r,g,b]），供 ImageData 直接写像素
+function turboRGB(t){
+  t=clamp(t,0,1);
+  const r=clamp(34.61+t*(1172.33+t*(-10793.56+t*(33300.12+t*(-38394.49+t*14825.05)))),0,255);
+  const g=clamp(23.31+t*(557.33+t*(1225.33+t*(-3574.96+t*(3520.32-1548.17*t)))),0,255);
+  const b=clamp(27.2+t*(3211.1+t*(-15327.97+t*(27814+t*(-22569.18+6838.66*t)))),0,255);
+  return [r|0,g|0,b|0];
+}
+function waterfall(){
+  if(!WW||!S.bins||!wfBuf) return;
+  const n=S.bins, pw=WW-PAD.l-PAD.r, d=wfBuf.data, plot=wfPlot;
+  // 整缓冲下移 1 行（typed-array 移位，远快于 drawImage 自拷贝；row0 保留旧值待覆盖）
+  d.copyWithin(WW*4, 0, WW*(WH-1)*4);
+  // 顶行清零为背景色
+  for(let x=0;x<WW*4;x+=4){ d[x]=plot[0]; d[x+1]=plot[1]; d[x+2]=plot[2]; d[x+3]=255; }
+  // 顶行画当前帧
+  for(let i=0;i<n;i++){
+    const t=(raw2dbm(S.live[i])-(DB_MIN+8))/((DB_MAX-6)-(DB_MIN+8));
+    const c=turboRGB(t);
+    let x=Math.round(freqToX(binFreq(i)));
+    const w=(i<n-1)?Math.max(1,Math.round(freqToX(binFreq(i+1)))-x):Math.max(1,Math.round(pw/n));
+    const xe=Math.min(WW, x+w);
+    for(;x<xe;x++){ const o=x*4; d[o]=c[0]; d[o+1]=c[1]; d[o+2]=c[2]; d[o+3]=255; }
+  }
+  wx.putImageData(wfBuf, 0, 0);   // 一次写回，替换原 drawImage 自拷贝 + 多 fillRect
+}
+
+/* ============================ rAF 合并渲染 ============================ */
+// onFrame 只置 S.dirty；本循环每屏至多 draw+waterfall 一次，合并突发帧，根除重绘抖动。
+function renderLoop(){
+  if(S.dirty){ draw(); if($('cFall').checked) waterfall(); S.dirty=false; }
+  requestAnimationFrame(renderLoop);
+}
+
+/* ============================ 捕获事件 ============================ */
+let AC=null;
+function beep(ok){
+  if(!$('cBeep').checked) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const t=AC.currentTime, o=AC.createOscillator(), g=AC.createGain();
+    o.type='sine'; o.connect(g); g.connect(AC.destination);
+    o.frequency.setValueAtTime(ok?880:520,t);
+    if(ok) o.frequency.setValueAtTime(1320,t+.09);
+    g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.25,t+.01);
+    g.gain.exponentialRampToValueAtTime(.0001,t+.22);
+    o.start(t);o.stop(t+.24);
+  }catch(e){}
+}
+function onHit(d){
+  const ok = d.normlist>0;
+  const card=$('hitCard');
+  card.className='card big '+(ok?'matched':'nomatch');
+  $('hitFreq').innerHTML = (ok? d.normlist.toFixed(2) : d.peak.toFixed(3)) + '<small>MHz</small>';
+  $('hitSub').textContent = ok
+      ? '已归一化到常见遥控频点 · 实测峰值 '+d.peak.toFixed(3)+' MHz（偏差 '+Math.abs(d.peak-d.normlist).toFixed(3)+' MHz）'
+      : '未匹配到常见频点，显示实测峰值频率';
+  const m=$('hitMeta'); m.innerHTML='';
+  const add=(t,cls)=>{const s=document.createElement('span');s.className='chip'+(cls?' '+cls:'');s.innerHTML=t;m.appendChild(s);};
+  add('峰值电平 <b>'+d.dbm.toFixed(1)+' dBm</b>');
+  add('高出本底 <b>+'+d.delta.toFixed(1)+' dB</b>');
+  add('本底 <b>'+d.floor.toFixed(1)+' dBm</b>');
+  add('持续 <b>'+d.dur+' ms</b>');
+  if(ok) add('匹配 <b>'+d.normlist+' MHz</b>','g');
+  (d.cand||[]).forEach((c,i)=>{ if(i) add('候选 <b>'+c.f+'</b> Δ'+c.d.toFixed(2)); });
+  card.classList.remove('pulse'); void card.offsetWidth; card.classList.add('pulse');
+  beep(ok);
+  S.hits.unshift({...d,t:new Date()});
+  if(S.hits.length>50) S.hits.pop();
+  renderHist();
+}
+function renderHist(){
+  const h=$('hist'); $('hitCnt').textContent=S.hits.length;
+  if(!S.hits.length){h.innerHTML='<div class="empty">暂无记录</div>';return;}
+  h.innerHTML = S.hits.map(x=>{
+    const ok=x.normlist>0;
+    return '<div class="hrow"><span class="hf '+(ok?'g':'w')+'">'+(ok?x.normlist.toFixed(2):x.peak.toFixed(2))+
+      '</span><span style="color:var(--mut);font-size:11.5px">'+x.peak.toFixed(3)+' MHz · '+x.dbm.toFixed(0)+
+      ' dBm · +'+x.delta.toFixed(0)+' dB</span><span class="ht">'+
+      x.t.toLocaleTimeString('zh-CN',{hour12:false})+'</span></div>';
+  }).join('');
+}
+$('btnClearHist').onclick=()=>{S.hits=[];renderHist();};
+
+/* ============================ 解码事件 ============================ */
+function onDecode(d){
+  $('decFreq').innerHTML = (d.freq? d.freq.toFixed(2):'--') + '<small>MHz</small>';
+  $('decSub').textContent = '协议 '+(d.proto||'-')+' · '+d.bits+' 位 · 单比特 '+(d.delay||'-')+' µs';
+  const m=$('decMeta'); m.innerHTML='';
+  const add=(t,cls)=>{const s=document.createElement('span');s.className='chip'+(cls?' '+cls:'');s.innerHTML=t;m.appendChild(s);};
+  const hex = '0x' + Number(d.code).toString(16).toUpperCase();
+  const bin = Number(d.code).toString(2).padStart(d.bits||0,'0');
+  add('十进制 <b>'+d.code+'</b>');
+  add('十六进制 <b>'+hex+'</b>');
+  add('二进制 <b>'+bin+'</b>');
+  const card=$('decodeCard'); card.classList.remove('pulse'); void card.offsetWidth; card.classList.add('pulse');
+  S.decodes.unshift({...d,t:new Date()});
+  if(S.decodes.length>30) S.decodes.pop();
+  renderDecHist();
+}
+// 解码记录回放：把该记录的 freq/code/te/bits 发给固件，由 CMT2300A 以 DIRECT OOK 重发
+function replayDec(freqMHz, code, te, bits){
+  if(!S.connected){ alert('未连接设备'); return; }
+  const f = Number(freqMHz);
+  if(!f || f<=0){ alert('该解码记录频率为 0/缺失，无法回放。\n请按 F5 硬刷新页面，清除早期版本的陈旧记录后重试。'); return; }
+  send({cmd:'replay', freq:f, code:code, te:te||350, bits:bits||24});
+  console.log('[replay]', f, 'MHz code=0x'+Number(code).toString(16).toUpperCase(), 'te='+te+'us bits='+bits);
+}
+// 手工保存解码记录到设备历史（LittleFS），需确认
+function saveDec(i){
+  const x=S.decodes[i]; if(!x) return;
+  if(!confirm('将该条解码记录保存到设备历史？\n\n'+x.freq.toFixed(3)+' MHz · 0x'+Number(x.code).toString(16).toUpperCase()+
+              ' · '+x.bits+'位 · te='+(x.te||'-')+'us')) return;
+  send({cmd:'hadd', freq:x.freq, code:Number(x.code), bits:x.bits||0, te:x.te||0,
+        proto:x.proto||0, name:x.name||''});
+}
+function renderDecHist(){
+  const h=$('decHist'); $('decCnt').textContent=S.decodes.length;
+  if(!S.decodes.length){h.innerHTML='<div class="empty">暂无解码</div>';return;}  h.innerHTML = '<table class="dechist"><thead><tr><th>码值</th><th>频率</th><th>位数</th><th>te</th><th>协议</th><th>二进制</th><th>时间</th><th>操作</th></tr></thead><tbody>' +
+    S.decodes.map((x,i)=>{
+      const hex='0x'+Number(x.code).toString(16).toUpperCase();
+      const bin=Number(x.code).toString(2).padStart(x.bits||0,'0');
+      const name = x.name ? x.name : ('P'+(x.proto||'-'));
+      const te = x.te ? (x.te+'us') : '-';
+      const canReplay = (x.code>0 && x.bits>0) ? '' : 'disabled style="opacity:.4"';
+      return '<tr>'+
+        '<td class="hf g">'+hex+'<span class="dec">('+Number(x.code)+')</span></td>'+
+        '<td class="fq">'+x.freq.toFixed(2)+' MHz</td>'+
+        '<td class="bc">'+x.bits+'位</td>'+
+        '<td class="bc">'+te+'</td>'+
+        '<td class="nm">'+name+'</td>'+
+        '<td class="bin">'+bin+'</td>'+
+        '<td class="ht">'+x.t.toLocaleTimeString('zh-CN',{hour12:false})+'</td>'+
+        '<td><button class="btn mini" '+canReplay+' onclick="replayDec('+x.freq+','+Number(x.code)+','+(x.te||0)+','+x.bits+')">▶ 回放</button> '+
+        '<button class="btn mini" title="保存到设备历史" onclick="saveDec('+i+')">保存</button></td>'+
+        '</tr>';
+    }).join('') + '</tbody></table>';
+}
+
+/* ============================ 表单 / 控制 ============================ */
+function fillForm(){
+  const c=S.cfg;
+  if($('cAuto')){ $('cAuto').checked = c.auto; $('decStat').textContent = c.auto?'自动解码已开启':'自动解码已关闭'; }
+  if(document.activeElement && document.activeElement.tagName==='INPUT') return;
+  $('fStart').value=c.start; $('fStop').value=effStop(c.start,c.stop,c.step).toFixed(2); $('fStep').value=c.step;
+  $('fDwell').value=c.dwell; $('fThr').value=c.thr; $('fDecay').value=c.decay;
+  $('fNormTol').value=c.normtol; $('fNormList').value=c.normlist; $('cNorm').checked = c.normon!==false; $('fPreset').value=c.preset;
+  $('btnModeRange').className  = 'btn '+(c.mode===0?'on':'');
+  $('btnModePreset').className = 'btn '+(c.mode===1?'on':'');
+  $('rowRange').style.display  = c.mode===0?'':'none';
+  $('rowPreset').style.display = c.mode===1?'':'none';
+  $('modeNote').textContent = c.mode===1
+      ? '直接跳到下方频点逐个测量 RSSI'
+      : '连续扫描一段范围，峰值自动归一到最近的常见频点';
+  $('btnRun').textContent = c.run?'⏸ 暂停扫描':'▶ 开始扫描';
+  $('btnRun').className = 'btn '+(c.run?'stop':'pri');
+  $('btnArm').textContent = c.arm?'◉ 已布防':'○ 未布防';
+  $('btnArm').className = 'btn '+(c.arm?'on':'');
+  $('sPart').textContent = c.demo?'模拟':(c.part||'—');
+}
+function updRadioPill(){
+  const p=$('pRadio'), d=p.querySelector('.dot'), s=p.querySelector('span:last-child');
+  if(S.demo||S.cfg.demo){ d.className='dot demo'; s.textContent='模拟数据'; }
+  else if(S.cfg.radio){ d.className='dot on'; s.textContent='CMT2300A 就绪'; }
+  else { d.className='dot off'; s.textContent='射频未就绪'; }
+}
+function updStat(d){
+  $('sSps').textContent=d.sps.toFixed(1)+' /s';
+  $('sPeak').textContent=d.peak.toFixed(1)+' dBm';
+  $('sFloor').textContent=d.floor.toFixed(1)+' dBm';
+  $('sRssi').textContent=d.rssi+' dBm';
+  $('sHeap').textContent=(d.heap/1024).toFixed(0)+' KB';
+  const u=d.up;$('sUp').textContent=(u>=3600?Math.floor(u/3600)+'h':'')+Math.floor(u%3600/60)+'m'+(u%60)+'s';
+}
+function collect(){
+  return {cmd:'set',
+    mode:S.cfg.mode,
+    start:+$('fStart').value, stop:+$('fStop').value, step:+$('fStep').value,
+    preset:$('fPreset').value, auto:$('cAuto').checked,
+    dwell:+$('fDwell').value, thr:+$('fThr').value, decay:+$('fDecay').value,
+    normon:$('cNorm').checked, normtol:+$('fNormTol').value, normlist:$('fNormList').value};
+}
+function applyLocal(o){ Object.assign(S.cfg,{start:o.start,stop:o.stop,step:o.step,dwell:o.dwell,
+    thr:o.thr,decay:o.decay,normtol:o.normtol,normlist:o.normlist,normon:o.normon,mode:o.mode,preset:o.preset}); S.base=null; }
+$('btnApply').onclick=()=>{const o=collect();applyLocal(o);send(o);};
+$('btnSave').onclick =()=>{const o=collect();applyLocal(o);send(o);send({cmd:'save'});};
+$('btnReset').onclick=()=>{
+  if(!confirm('将设备恢复至初始配置？\n这会清除全部已保存的参数并重启设备，网页将短暂断开。')){
+    return;
+  }
+  send({cmd:'reset'});
+  $('btnReset').textContent='重置中…';
+  $('btnReset').disabled=true;
+};
+$('btnRun').onclick  =()=>{S.cfg.run=!S.cfg.run;fillForm();send({cmd:'run',v:S.cfg.run});};
+$('btnArm').onclick  =()=>{S.cfg.arm=!S.cfg.arm;fillForm();send({cmd:'arm',v:S.cfg.arm});};
+$('btnClear').onclick=()=>{send({cmd:'clear'}); if(S.holdF)S.holdF.fill(0);};
+$('btnBase').onclick =()=>{send({cmd:'baseline'}); S.base=null; if(S.holdF)S.holdF.fill(0);};
+$('btnModeRange').onclick =()=>{ S.cfg.mode=0; applyLocal({mode:0}); send({cmd:'set',mode:0}); };
+$('btnModePreset').onclick=()=>{ S.cfg.mode=1; applyLocal({mode:1}); send({cmd:'set',mode:1}); };
+document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{
+  const [lo,hi,st]=b.dataset.p.split(',').map(Number);
+  if(S.cfg.mode===1){                 // 常见频点：从标准频点库筛出区间内的频点
+    const sel=BASE_FREQS.filter(f=>f>=lo && f<=hi);
+    $('fPreset').value=sel.join(',');
+    S.freqs=sel.slice(); S.preset=true;        // 乐观更新，图形立即反映
+    const o=collect();applyLocal(o);send(o);
+  } else {                            // 范围扫频：填入一段连续范围
+    $('fStart').value=lo;$('fStop').value=hi;$('fStep').value=st;
+    const o=collect();applyLocal(o);send(o);
+  }
+});
+$('cFall').onchange=()=>{ wf.style.display=$('cFall').checked?'block':'none'; };
+$('cAuto').onchange=()=>{ S.cfg.auto=$('cAuto').checked;
+  $('decStat').textContent = S.cfg.auto?'自动解码已开启':'自动解码已关闭';
+  send({cmd:'set', auto:S.cfg.auto}); };
+$('btnClearDec').onclick=()=>{ S.decodes=[]; renderDecHist(); };
+
+/* ============================ 解码历史（LittleFS 持久化） ============================ */
+let HIST=[];
+function openHist(){ send({cmd:'hlist'}); $('histModal').style.display='flex'; }
+function closeHist(){ $('histModal').style.display='none'; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function renderHistModal(){
+  const b=$('histBody'); $('histCnt').textContent=HIST.length;
+  if(!HIST.length){ b.innerHTML='<div class="empty">暂无历史</div>'; return; }
+  b.innerHTML='<table class="dechist"><thead><tr><th>序号</th><th>频率</th><th>码值</th><th>位数</th><th>te</th><th>协议/名称</th><th>操作</th></tr></thead><tbody>'+
+    HIST.map(x=>{
+      const hex='0x'+Number(x.code).toString(16).toUpperCase();
+      const canR=(x.code>0&&x.bits>0)?'':'disabled style="opacity:.4"';
+      return '<tr>'+
+        '<td class="ht">#'+x.id+'</td>'+
+        '<td class="fq">'+x.freq.toFixed(2)+' MHz</td>'+
+        '<td class="hf g">'+hex+'<span class="dec">('+Number(x.code)+')</span></td>'+
+        '<td class="bc">'+(x.bits||'-')+'位</td>'+
+        '<td class="bc">'+(x.te?x.te+'us':'-')+'</td>'+
+        '<td class="nm">'+esc(x.name||('P'+(x.proto??'-')))+'</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="btn mini" title="回放" '+canR+' onclick="replayDec('+x.freq+','+Number(x.code)+','+(x.te||0)+','+(x.bits||0)+')">▶</button> '+
+          '<button class="btn mini" title="查看" onclick="viewHist('+x.id+')">查</button> '+
+          '<button class="btn mini" title="编辑名称" onclick="editHist('+x.id+')">编</button> '+
+          '<button class="btn mini stop" title="删除" onclick="delHist('+x.id+')">删</button>'+
+        '</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+function histFind(id){ return HIST.find(h=>h.id===id); }
+function viewHist(id){
+  const x=histFind(id); if(!x)return;
+  alert('解码记录 #'+x.id+'\n\n频率: '+x.freq.toFixed(3)+' MHz\n码值: '+x.code+
+        '  (0x'+Number(x.code).toString(16).toUpperCase()+')\n位数: '+x.bits+
+        '  te: '+x.te+' us\n协议: '+(x.proto??'-')+'\n名称: '+(x.name||'（未命名）'));
+}
+function editHist(id){
+  const x=histFind(id); if(!x)return;
+  const nm=prompt('编辑名称（协议名），用于识别该遥控：', x.name||'');
+  if(nm===null) return;
+  send({cmd:'hupd',id:id,name:nm});
+}
+function delHist(id){ if(!confirm('删除该条解码记录？')) return; send({cmd:'hdel',id:id}); }
+$('btnHist').onclick=openHist;
+$('btnHistClose').onclick=closeHist;
+$('btnHistExport').onclick=()=>{ if(HIST.length) location.href='/api/history'; else alert('历史为空'); };
+$('btnHistClear').onclick=()=>{ if(!HIST.length){alert('历史为空');return;} if(!confirm('清空全部解码历史？')) return; send({cmd:'hclear'}); };
+$('btnUpd').onclick=()=>{ window.open('/update','_blank'); };
+
+/* ============================ 启动 ============================ */
+readPalette(); resize(); fillForm(); renderHist(); updRadioPill();
+renderLoop();              // 启动 rAF 合并渲染循环（每屏至多重绘一次）
+connect();
+setTimeout(()=>{ if(!S.connected && !S.demo) goDemo('设备未响应'); }, 2500);
+setInterval(()=>{ // 数据超时保护
+  if(S.connected && performance.now()-S.lastFrame>4000) S.dirty=true;
+},1000);
+</script>
+</body>
+</html>
