@@ -518,6 +518,54 @@ void CMT2300A_TxOokBegin(uint32_t freq_hz)
     }
 }
 
+void CMT2300A_SetTxPower(int8_t dBm)
+{
+    /* 16 位功率字表：完全参考 OpenDTU lib/CMT2300a/cmt2300wrapper.cpp setPALevel()
+       （TRx Matching Network = 20 dBm，-10 ~ +20 dBm 逐档标定）。
+       功率字大端写入 TX8(0x5C)=高字节 / TX9(0x5D)=低字节；>16dBm 需 CMT4 bit0=1（double Tx value）。 */
+    uint16_t word;
+    switch (dBm) {
+    case -10: word = 0x0501; break;
+    case  -9: word = 0x0601; break;
+    case  -8: word = 0x0701; break;
+    case  -7: word = 0x0801; break;
+    case  -6: word = 0x0901; break;
+    case  -5: word = 0x0A01; break;
+    case  -4: word = 0x0B01; break;
+    case  -3: word = 0x0C01; break;
+    case  -2: word = 0x0D01; break;
+    case  -1: word = 0x0E01; break;
+    case   0: word = 0x1002; break;
+    case   1: word = 0x1302; break;
+    case   2: word = 0x1602; break;
+    case   3: word = 0x1902; break;
+    case   4: word = 0x1C02; break;
+    case   5: word = 0x1F03; break;
+    case   6: word = 0x2403; break;
+    case   7: word = 0x2804; break;
+    case   8: word = 0x2D04; break;
+    case   9: word = 0x3305; break;
+    case  10: word = 0x3906; break;
+    case  11: word = 0x4107; break;
+    case  12: word = 0x4908; break;
+    case  13: word = 0x5309; break;
+    case  14: word = 0x5E0B; break;
+    case  15: word = 0x6C0C; break;
+    case  16: word = 0x7D0C; break;
+    /* 以下档位需 CMT4 bit0 = double Tx value */
+    case  17: word = 0x4A0C; break;
+    case  18: word = 0x580F; break;
+    case  19: word = 0x6B12; break;
+    case  20: word = 0x8A18; break;   /* OpenDTU 标定的 +20dBm 档 */
+    default: return;                  /* 越界档位不改 */
+    }
+    uint8_t cmt4 = CMT2300A_ReadReg(CMT2300A_CUS_CMT4);
+    if (dBm > 16) cmt4 |= 0x01; else cmt4 &= 0xFE;
+    CMT2300A_WriteReg(CMT2300A_CUS_CMT4, cmt4);
+    CMT2300A_WriteReg(CMT2300A_CUS_TX8, word >> 8);
+    CMT2300A_WriteReg(CMT2300A_CUS_TX9, word & 0xFF);
+}
+
 void CMT2300A_TxOokEnd(void)
 {
     /* 直接完整重初始化回接收态（SoftReset 会清掉 TX_DIN_EN 等 TX 配置，无需手动清） */
