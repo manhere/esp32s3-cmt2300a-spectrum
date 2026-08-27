@@ -18,6 +18,7 @@ struct ScanSettings {
     bool     armed      = true;      // 布防：允许输出捕获事件
     uint8_t  mode       = DEF_MODE;  // 0 = 范围扫频, 1 = 常见频点扫频
     bool     autoDecode = DEF_AUTO_DECODE;  // 命中频率后顺带 OOK 解码按键编码
+    int8_t   txPowerDbm = DEF_TX_POWER_DBM; // 发射功率档位（-10~20 dBm）
     char     normalizedList[256] = DEF_NORMALIZED_LIST;
     char     presetList[256] = DEF_PRESET_LIST;  // 常见频点扫频的频点列表(MHz)
 };

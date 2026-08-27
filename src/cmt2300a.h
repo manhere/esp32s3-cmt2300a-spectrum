@@ -24,6 +24,7 @@
 
 /* ============ 寄存器地址 ============ */
 #define CMT2300A_CUS_CMT1       0x00
+#define CMT2300A_CUS_CMT4       0x03   /* bit0=double Tx value（>16dBm 功率档门控，OpenDTU 证实） */
 #define CMT2300A_CUS_CMT10      0x09
 #define CMT2300A_CUS_SYS1       0x0C
 #define CMT2300A_CUS_SYS2       0x0D
@@ -78,6 +79,8 @@
 #define CMT2300A_CUS_INT2_CTL          0x67   /* 中断2 控制：TX_DIN 极性反转 */
 #define CMT2300A_CUS_TX_BANK_ADDR      0x55   /* TX 配置区首地址（0x55-0x5F 共 11 字节） */
 #define CMT2300A_CUS_TX_BANK_SIZE      11
+#define CMT2300A_CUS_TX8               0x5C   /* TX 功率字高字节（TX_POWER） */
+#define CMT2300A_CUS_TX9               0x5D   /* TX 功率字低字节 */
 #define CMT2300A_MASK_TX_DIN_EN        0x80   /* FIFO_CTL[7]=TX_DIN_EN：使能 DIN 输入驱动 PA。DIRECT(OOK) 模式必须置位（datasheet V1.8 §6.1 Tx step1）。缺则 PA 恒载波无调制。 */
 #define CMT2300A_MASK_TX_DIN_SEL       0x60   /* FIFO_CTL[6:5]=TX_DIN_SEL：选哪个 GPIO 作 DIN 源。00=GPIO1 / 0x20=GPIO2 / 0x40=GPIO3
                                                 （datasheet V1.8 §6.1 Tx step2）。本板 ESP32 GPIO10 -> CMT GPIO3 飞线，故须 0x40(GPIO3)。
@@ -200,6 +203,16 @@ void CMT2300A_ClearInterruptFlags(void);
  * @param freq_hz 发射频率（Hz）
  */
 void CMT2300A_TxOokBegin(uint32_t freq_hz);
+
+/**
+ * 设置发射功率档位（-10 ~ +20 dBm，步进 1 dB）
+ * 功率字表完全参考 OpenDTU（tbnobody/OpenDTU lib/CMT2300a/cmt2300wrapper.cpp setPALevel()，
+ * TRx Matching Network = 20 dBm）：
+ *   16 位功率字写入 TX8(0x5C)=高字节 / TX9(0x5D)=低字节；
+ *   功率 > 16 dBm 时 CMT4 bit0 置 1（"double Tx value" 档位门控，OpenDTU 证实）。
+ * @param dBm  -10 ~ 20；越界值忽略不写
+ */
+void CMT2300A_SetTxPower(int8_t dBm);
 
 /**
  * 退出发射态、完整重初始化回接收（直接调用 CMT2300A_Init，无状态补丁）

@@ -720,6 +720,7 @@ static void doReplay() {
 
     Serial.printf("[TX] replay %.3fMHz code=0x%08X bits=%u te=%uus\n",
                   freq / 1e6f, (unsigned)code, bits, te);
+    CMT2300A_SetTxPower(g_set.txPowerDbm);   // 应用当前功率档位（-10~20dBm）
     CMT2300A_TxOokBegin(freq);
 
     /* ★一票否决自检★：确认 DIN->PA 调制通路齐备（基准 = datasheet V1.8 §6.1 DIRECT Tx 序列）。
@@ -851,6 +852,7 @@ void loadSettings() {
         g_prefs.putBool("normon", true);
         g_prefs.putString("normlist", DEF_NORMALIZED_LIST);
         g_prefs.putUChar("mode",  DEF_MODE);
+        g_prefs.putChar("txpwr", DEF_TX_POWER_DBM);
         g_prefs.putString("preset", DEF_PRESET_LIST);
         g_prefs.putUChar("nvver", NVS_VER);
     }
@@ -863,6 +865,8 @@ void loadSettings() {
     g_set.normalizedTolMHz  = g_prefs.getFloat("normtol",   DEF_NORMALIZED_TOL_MHZ);
     g_set.normalizedEnable  = g_prefs.getBool("normon", true);
     g_set.mode        = g_prefs.getUChar("mode",  DEF_MODE);
+    g_set.txPowerDbm  = (int8_t)g_prefs.getChar("txpwr", DEF_TX_POWER_DBM);
+    if (g_set.txPowerDbm < -10 || g_set.txPowerDbm > 20) g_set.txPowerDbm = DEF_TX_POWER_DBM;
     // autoDecode 不持久化：每次上电默认 DEF_AUTO_DECODE，仅本次运行有效
     String sl         = g_prefs.getString("normlist", DEF_NORMALIZED_LIST);
     strncpy(g_set.normalizedList, sl.c_str(), sizeof(g_set.normalizedList) - 1);
@@ -888,6 +892,7 @@ void saveSettings() {
     g_prefs.putBool("normon", s.normalizedEnable);
     g_prefs.putString("normlist", s.normalizedList);
     g_prefs.putUChar("mode",  s.mode);
+    g_prefs.putChar("txpwr", s.txPowerDbm);
     g_prefs.putString("preset", s.presetList);
     g_prefs.end();
     Serial.println(F("[Spectrum] 参数已保存到 NVS"));

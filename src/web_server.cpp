@@ -60,6 +60,7 @@ static String buildCfgJson() {
     d["normlist"]   = s.normalizedList;
     d["mode"]   = s.mode;
     d["auto"]   = s.autoDecode;
+    d["txpwr"]  = s.txPowerDbm;   // 发射功率档位（-10~20 dBm）
     d["preset"] = s.presetList;
     d["run"]    = s.running;
     d["arm"]    = s.armed;
@@ -160,6 +161,7 @@ static void handleCmd(AsyncWebSocketClient* client, const String& msg) {
         }
         if (d["mode"].is<int>()) s.mode = (uint8_t)constrain(d["mode"].as<int>(), 0, 1);
         if (d["auto"].is<bool>()) s.autoDecode = d["auto"].as<bool>();
+        if (d["txpwr"].is<int>()) s.txPowerDbm = (int8_t)constrain(d["txpwr"].as<int>(), -10, 20);
         if (d["preset"].is<const char*>()) {
             strncpy(s.presetList, d["preset"].as<const char*>(), sizeof(s.presetList) - 1);
             s.presetList[sizeof(s.presetList) - 1] = '\0';
