@@ -239,6 +239,9 @@ input[type=range]{width:100%;accent-color:var(--acc)}
           <div class="f"><label>归一化容差 (MHz)</label><input type="number" id="fNormTol" step="0.1" min="0.05" max="10"></div>
           <div class="f"><label>归一化频点 (MHz，逗号分隔)</label><input type="text" id="fNormList"></div>
         </div>
+        <div class="f" style="margin-top:10px"><label>发射功率 (dBm)</label><select id="fTxPwr"></select>
+          <div class="note">回放发射时应用的功率档位（-10 ~ +20 dBm，适用于 20dBm 匹配网络模块）。</div>
+        </div>
         <div class="btns" style="margin-top:10px">
           <button class="btn pri" id="btnApply">应用</button>
           <button class="btn" id="btnSave">保存到设备</button>
@@ -797,6 +800,7 @@ function fillForm(){
   $('fStart').value=c.start; $('fStop').value=effStop(c.start,c.stop,c.step).toFixed(2); $('fStep').value=c.step;
   $('fDwell').value=c.dwell; $('fThr').value=c.thr; $('fDecay').value=c.decay;
   $('fNormTol').value=c.normtol; $('fNormList').value=c.normlist; $('cNorm').checked = c.normon!==false; $('fPreset').value=c.preset;
+  { const selP=$('fTxPwr'); if(selP && !selP.options.length){ for(let p=-10;p<=20;p++){ const o=document.createElement('option'); o.value=p; o.textContent=p+' dBm'; selP.appendChild(o);} } if(selP) selP.value=(c.txpwr!=null?c.txpwr:20); }
   $('btnModeRange').className  = 'btn '+(c.mode===0?'on':'');
   $('btnModePreset').className = 'btn '+(c.mode===1?'on':'');
   $('rowRange').style.display  = c.mode===0?'':'none';
@@ -830,10 +834,12 @@ function collect(){
     start:+$('fStart').value, stop:+$('fStop').value, step:+$('fStep').value,
     preset:$('fPreset').value, auto:$('cAuto').checked,
     dwell:+$('fDwell').value, thr:+$('fThr').value, decay:+$('fDecay').value,
-    normon:$('cNorm').checked, normtol:+$('fNormTol').value, normlist:$('fNormList').value};
+    normon:$('cNorm').checked, normtol:+$('fNormTol').value, normlist:$('fNormList').value,
+    txpwr:+$('fTxPwr').value};
 }
 function applyLocal(o){ Object.assign(S.cfg,{start:o.start,stop:o.stop,step:o.step,dwell:o.dwell,
-    thr:o.thr,decay:o.decay,normtol:o.normtol,normlist:o.normlist,normon:o.normon,mode:o.mode,preset:o.preset}); S.base=null; }
+    thr:o.thr,decay:o.decay,normtol:o.normtol,normlist:o.normlist,normon:o.normon,mode:o.mode,preset:o.preset,
+    txpwr:o.txpwr}); S.base=null; }
 $('btnApply').onclick=()=>{const o=collect();applyLocal(o);send(o);};
 $('btnSave').onclick =()=>{const o=collect();applyLocal(o);send(o);send({cmd:'save'});};
 $('btnReset').onclick=()=>{
