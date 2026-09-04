@@ -720,8 +720,9 @@ static void doReplay() {
 
     Serial.printf("[TX] replay %.3fMHz code=0x%08X bits=%u te=%uus\n",
                   freq / 1e6f, (unsigned)code, bits, te);
-    CMT2300A_SetTxPower(g_set.txPowerDbm);   // 应用当前功率档位（-10~20dBm）
-    CMT2300A_TxOokBegin(freq);
+    /* 功率档位作为入参传给 TxOokBegin：必须在 SoftReset + bank 全量重写之后再写
+       0x03/0x5C/0x5D，放在本行之前会被覆盖（历史 bug）。 */
+    CMT2300A_TxOokBegin(freq, g_set.txPowerDbm);
 
     /* ★一票否决自检★：确认 DIN->PA 调制通路齐备（基准 = datasheet V1.8 §6.1 DIRECT Tx 序列）。
        - EN_CTL[5]=LOCKING_EN   : PLL 未锁禁止进 TX（SoftReset 会清 -> 曾恒关）
