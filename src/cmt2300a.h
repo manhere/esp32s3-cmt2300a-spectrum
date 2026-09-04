@@ -196,23 +196,16 @@ void CMT2300A_ClearInterruptFlags(void);
 /**
  * 进入 DIRECT OOK 发射态（解码记录回放用）
  * 流程（对齐工作参考 tuya_rf / OOKwiz：每次发射前完整 SoftReset 重初始化）：
- *   SoftReset -> GoStby -> 写 DataRate/TX bank -> xosc_aac=2 -> SetFrequency
- *   -> DATA_MODE=DIRECT -> IO_SEL=0x14 -> EN_CTL[5]=LOCKING_EN(DIN 使能门控)
- *   -> FIFO_CTL 使能 TX_DIN_EN(GPIO1) -> TX_DIN_INV=0 -> GPIO1 配输出
- *   -> GoSleep->GoStby->GoTx
+ *   SoftReset -> GoStby -> 写 CMT/System/DataRate/Baseband/TX bank -> xosc_aac=2
+ *   -> SetFrequency -> IO_SEL -> INT2_CTL -> INT_EN -> SYS2 -> EN_CTL
+ *   -> FIFO_CTL(TX_DIN_EN/TX_DIN_SEL) -> TX1(TX_DIN_SOURCE)
+ *   -> ★SetTxPower(dBm)★ -> GoSleep -> GoStby -> GoTx
  * @param freq_hz 发射频率（Hz）
+ * @param dBm     发射功率档位（-10~+20）。★功率必须在本函数内部、全部 bank 写完之后
+ *                应用★：由调用方在 TxOokBegin 之前写会被开头的 SoftReset + bank
+ *                全量重写覆盖（历史 bug：功率档位永远不生效）。
  */
-void CMT2300A_TxOokBegin(uint32_t freq_hz);
-
-/**
- * 设置发射功率档位（-10 ~ +20 dBm，步进 1 dB）
- * 功率字表完全参考 OpenDTU（tbnobody/OpenDTU lib/CMT2300a/cmt2300wrapper.cpp setPALevel()，
- * TRx Matching Network = 20 dBm）：
- *   16 位功率字写入 TX8(0x5C)=高字节 / TX9(0x5D)=低字节；
- *   功率 > 16 dBm 时 CMT4 bit0 置 1（"double Tx value" 档位门控，OpenDTU 证实）。
- * @param dBm  -10 ~ 20；越界值忽略不写
- */
-void CMT2300A_SetTxPower(int8_t dBm);
+void CMT2300A_TxOokBegin(uint32_t freq_hz, int8_t dBm);
 
 /**
  * 退出发射态、完整重初始化回接收（直接调用 CMT2300A_Init，无状态补丁）

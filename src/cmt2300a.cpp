@@ -46,11 +46,12 @@ static const uint8_t kOokDataRateBank[CMT2300A_DATA_RATE_BANK_SIZE] = {
    直接照搬。频率区(0x18-0x1F) 由 SetFrequency() 按目标频点重算覆盖，不抄 433 硬编码。
    参考优先级：sh4_rf 流程+bank > 寄存器手册位定义 > vendor FIFO/Packet demo。 */
 /* CMT bank（0x00-0x0B）。与官方 +20dBm RFPDK 导出 cmt2300a_ook.exp 逐字节比对，
-   唯一差异是 0x03(CMT4)：sh4(低功率遥控反汇编)=0x1C、exp(20dBm)=0x1D，
-   即 bit0 是 PA 高/低功率模式门控（CMT4 为"配置软件直接导入"位，手册未展开，
-   但它是低功率配置与 20dBm 配置在 CMT bank 上的唯一区别）。本工程 20dBm 模块须置 1
-   (0x1D) 才能让 PA 进入高功率档——此前锁在 0x1C(低功率) 导致 TX_POWER 被钳顶、
-   无论 TX8 填何值功率都不变（实测"没有变化"）。其余 11 字节与 exp 完全一致，保留 sh4 值。 */
+   唯一差异是 0x03(CMT4) bit0：sh4(低功率遥控反汇编)=0x1C、exp(20dBm)=0x1D。
+   ★bit0 的权威语义 = RFPDK 的 "Tx power double bit"，仅当目标功率 >16dBm 时由 RFPDK
+   置位★（OpenDTU params_860.h 原注释 "(and Tx power double bit not set)"：其 20dBm
+   匹配网络跑 +13dBm 时 0x03=0x1C，bit0=0）——它【不是】"20dBm 模块必须常置的 PA 高功率
+   档门控"（旧注释与 commit 60d4e88 的推断是误判）。此处保留 exp 值 0x1D 只决定"复位/重
+   加载后默认落在 +20dBm 档"，实际档位一律由 SetTxPower() 在每次发射前重写。 */
 static const uint8_t kSh4CmtBank[12] = {       /* 0x00-0x0B */
     0x00, 0x66, 0xEC, 0x1D, 0xF0, 0x80, 0x14, 0x08, 0x91, 0x02, 0x02, 0xD0
 };
@@ -70,15 +71,15 @@ static const uint8_t kSh4BasebandBank[29] = { /* 0x38-0x54，含 PKT1=0x10(DIREC
 };
 /* TX bank（0x55-0x5F）：直接采用官方 +20dBm RFPDK 导出配置 cmt2300a_ook.exp
    （2026.08.17 生成，433.92MHz / OOK / 20dBm 匹配网络 / Tx Power +20dBm）。
-   该 exp 即为本工程 20dBm 模块的权威配置，故照搬其 TX bank 原值，不再手改。
-   关键功率寄存器（与 exp 一致）：
+   除功率字外的其余字节是"发射通路"配置，照搬 exp 不再手改：
      - TX6(0x5A)[7:5]=PA_VBLPF_SEL = 0xB0(SEL=5)：20dBm 模块的 PA 偏置/阻抗须 SEL=5；
        此前曾误改成 0x90(SEL=4)，反而偏离 20dBm，现已还原为 exp 值。
-     - TX8(0x5C)[7:0]=TX_POWER = 0x7A：RFPDK 为 20dBm 模块标定的功率字
-       （非越大越好——PA 实际输出由 0x08(PA 配置)+TX6+TX8 共同决定，0x7A 为经验标定值）。
      - TX1(0x55)=0x55：bit5=0(FSK，非 GFSK) / bit4=1(PA_RAMP_EN) / bit2=1(TX_DIN_SOURCE)，
        与 DIRECT OOK 调制通路兼容（与 sh4_rf 量产值一致）。
-   CMT bank 0x08=0x91(PA 配置) 已与 exp 一致，无需再改。 */
+     - 0x5F 是 CUS_LBD（低电压检测）不是 TX11，同为 exp 导出值。
+   CMT bank 0x08=0x91(PA 配置) 已与 exp 一致，无需再改。
+   ★TX8(0x5C)/TX9(0x5D) 只是"复位后默认值"，发射前必被 SetTxPower()（文件内 static）覆盖★
+   （+20dBm 档已实测定值 0x8A18，见 SetTxPower 定义处注释）。 */
 static const uint8_t kSh4TxBank[11] = {       /* 0x55-0x5F，官方 +20dBm RFPDK 导出 */
     0x55, 0x9A, 0x0C, 0x00, 0x0F, 0xB0, 0x00, 0x7A, 0x17, 0x3F, 0x7F
 };
@@ -407,7 +408,12 @@ bool CMT2300A_Init(void)
  *   2. 补 EN_CTL[5] 后仍 pulses=0 -> 说明还缺涂鸦的 INT_EN/SYS2 等使能项；
  *   3. 全量照抄涂鸦（含 IO_SEL=0x0A）-> 载波完全消失（RSSI 全无）= 引脚路由被改错，
  *      由此定位 (a)/(b) 两类寄存器必须分别对待。当前实现即为该结论的落地。 */
-void CMT2300A_TxOokBegin(uint32_t freq_hz)
+
+/* 功率设置实现在本文件末尾（static，不对外暴露），此处前置声明以便在 TxOokBegin 内调用。
+   完整文档（功率字表来源、RFPDK 交叉验证、CMT4 bit0 语义）见其定义处。 */
+static void SetTxPower(int8_t dBm);
+
+void CMT2300A_TxOokBegin(uint32_t freq_hz, int8_t dBm)
 {
     /* 1) 软复位 -> 重载 EEPROM 默认（CMT/System/Baseband 回到 OOK 出厂值） */
     CMT2300A_SoftReset();
@@ -417,22 +423,20 @@ void CMT2300A_TxOokBegin(uint32_t freq_hz)
           频率区(0x18-0x1F) 不在此写，由 SetFrequency() 重算覆盖；其余 bank 频率无关照搬。
           参考优先级：sh4_rf bank > 寄存器手册位定义 > vendor FIFO/Packet demo。
 
-          ★CMT2300A 分页寄存器坑（关键修复）★：bank 是分页的——写 bank 前必须先向页选寄存器
-          写对应页值(0x00/0x0C/0x20/0x38/0x55)，之后同地址才变成该 bank 的首寄存器。
-          之前直接 WriteReg(0x0C, x) 会被当成"切到 0x0C 页"的命令，数据没落到 SYS1。 */
-    CMT2300A_WriteReg(0x00, 0x00);   /* 选 CMT 页 */
+          ★CMT2300A 是平坦寄存器映射，没有分页★（中文 Datasheet Rev1.1 p38-39 原文：
+          "地址从 0x00 到 0x71……地址是连续的，操作方式无本质区别，都是使用 SPI 按照访问
+          寄存器的时序进行直接读写操作"）。旧注释所称"写 bank 前必须先向页选寄存器写页值"
+          是误判，那 5 条写（0x00←0x00 / 0x0C←0x0C / 0x20←0x20 / 0x38←0x38 / 0x55←0x55）
+          实打实把脏值写进了 CMT1/SYS1/RF9/PKT1/TX1，只是被紧随的 bank 循环覆盖才没出事；
+          一旦循环长度或顺序变动就会留下隐患，故删除。 */
     for (uint8_t i = 0; i < 12; i++) CMT2300A_WriteReg(0x00 + i, kSh4CmtBank[i]);
-    CMT2300A_WriteReg(0x0C, 0x0C);   /* 选 SYSTEM 页 */
     for (uint8_t i = 0; i < 12; i++) CMT2300A_WriteReg(0x0C + i, kSh4SystemBank[i]);
-    CMT2300A_WriteReg(0x20, 0x20);   /* 选 DATA_RATE 页 */
     for (uint8_t i = 0; i < 24; i++) CMT2300A_WriteReg(0x20 + i, kSh4DataRateBank[i]);
-    CMT2300A_WriteReg(0x38, 0x38);   /* 选 BASEBAND 页 */
     for (uint8_t i = 0; i < 29; i++) CMT2300A_WriteReg(0x38 + i, kSh4BasebandBank[i]);
-    CMT2300A_WriteReg(0x55, 0x55);   /* 选 TX 页 */
     for (uint8_t i = 0; i < CMT2300A_CUS_TX_BANK_SIZE; i++)
         CMT2300A_WriteReg(CMT2300A_CUS_TX_BANK_ADDR + i, kSh4TxBank[i]);
 
-    /* 3) TX bank 已随上面 0x55 页一并写入 kSh4TxBank（与上一步合并） */
+    /* 3) TX bank 已随上一步 0x55-0x5F 一并写入 kSh4TxBank（与上一步合并，无需再写） */
 
     /* 4) 晶振稳定时间 xosc_aac = 2 */
     CMT2300A_WriteReg(CMT2300A_CUS_CMT10,
@@ -504,7 +508,14 @@ void CMT2300A_TxOokBegin(uint32_t freq_hz)
 
     /* 11b) DIN(ESP32 GPIO10 -> CMT GPIO3) 由 OOK-RMT 通道驱动（见 spectrum.cpp 的 OOK-RMT 段），不再 digitalWrite 直驱。 */
 
-    /* 12) GoSleep -> GoStby -> GoTx -> 轮询进入 TX 态（等 PLL 锁定 + PA 武装）。
+    /* 12) ★应用发射功率★——必须放在全部 bank 写完之后、GoSleep 之前，两个原因：
+          (a) 本函数开头 SoftReset + bank 全量重写会覆盖 0x03/0x5C/0x5D，调用方在
+              TxOokBegin 之前调 SetTxPower 会被整组抹掉（历史 bug：功率档位永远不生效）；
+          (b) AN142 §3.5 step10 要求"改完配置区 -> go_sleep 让配置生效"，紧随其后的
+              第 13 步 GoSleep 正好满足，无需额外状态切换。 */
+    SetTxPower(dBm);
+
+    /* 13) GoSleep -> GoStby -> GoTx -> 轮询进入 TX 态（等 PLL 锁定 + PA 武装）。
            补 GoStby：状态机先把上面新写的 TX_DIN_EN / TX_DIN_SEL / IO_SEL 真正生效后，再进 TX。 */
     CMT2300A_GoSleep();
     delayMicroseconds(200);
@@ -518,11 +529,35 @@ void CMT2300A_TxOokBegin(uint32_t freq_hz)
     }
 }
 
-void CMT2300A_SetTxPower(int8_t dBm)
+/* 设置发射功率档位（-10 ~ +20 dBm，步进 1 dB）。
+   ★文件内私有（static），不对外暴露★：本函数必须在 TxOokBegin 内部、全部 bank 写完
+   之后调用；由外部在 TxOokBegin 之前调用会被开头的 SoftReset + bank 全量重写抹掉
+   （历史 bug：功率档位永远不生效）。设为 static 可从编译期杜绝该用法再次出现。
+   如需运行时改功率，重新进 TxOokBegin(freq, dBm) 即可（内部含完整生效序列）。
+
+   功率字表完全参考 OpenDTU（tbnobody/OpenDTU lib/CMT2300a/cmt2300wrapper.cpp
+   setPALevel()，TRx Matching Network = 20 dBm），已用两份 RFPDK 导出交叉验证：
+     - OpenDTU params_860 / params_900（20dBm 匹配网络，Tx Power=+13dBm）
+       -> 0x5C/0x5D = 0x53/0x09，正是本表 13dBm 档的 0x5309；
+     - AN142 官方示例（433.92MHz / FSK / +16dBm）-> 0x5C/0x5D = 0x72/0x0C，
+       与本表 16dBm 档 0x7D0C 仅高字节差 0x0B（低字节一致）。
+   即：功率字与频率基本无关，但 433MHz 下绝对 dBm 仍有约 1dB 级偏差，
+   ★本表在 433.92MHz 只能当"相对刻度"用，绝对功率需实测校准（见 +20dBm 档 TODO）★。
+   16 位功率字大端写入 TX8(0x5C)=高字节 / TX9(0x5D)=低字节。
+
+   ★CMT4 bit0 的权威语义 = RFPDK 的 "Tx power double bit"，仅目标功率 >16dBm 时置位★
+   （OpenDTU params_860.h 原注释即 "(and Tx power double bit not set)"，其 20dBm
+   匹配网络跑 +13dBm 时 CMT4=0x1C，bit0=0）。它【不是】"20dBm 模块必须常置的 PA 高功率
+   档门控"——bank 里默认 0x1D 只代表"复位后落在 +20dBm 档"，实际档位一律由本函数重写。
+
+   ★注意：本函数只改 0x03/0x5C/0x5D，TX6(0x5A)/CMT9(0x08) 等 PA 偏置沿用 bank 的
+   20dBm 标定值不随档位变化（OpenDTU setPALevel 同样如此），故低功率档（-10~0dBm）
+   的实际输出可能偏离标称值，需实测确认。
+
+   @param dBm  -10 ~ 20；越界值忽略不写
+*/
+static void SetTxPower(int8_t dBm)
 {
-    /* 16 位功率字表：完全参考 OpenDTU lib/CMT2300a/cmt2300wrapper.cpp setPALevel()
-       （TRx Matching Network = 20 dBm，-10 ~ +20 dBm 逐档标定）。
-       功率字大端写入 TX8(0x5C)=高字节 / TX9(0x5D)=低字节；>16dBm 需 CMT4 bit0=1（double Tx value）。 */
     uint16_t word;
     switch (dBm) {
     case -10: word = 0x0501; break;
@@ -556,7 +591,10 @@ void CMT2300A_SetTxPower(int8_t dBm)
     case  17: word = 0x4A0C; break;
     case  18: word = 0x580F; break;
     case  19: word = 0x6B12; break;
-    case  20: word = 0x8A18; break;   /* OpenDTU 标定的 +20dBm 档 */
+    /* ★+20dBm 档定值（实测确定）★：本工程 433.92MHz / 20dBm 匹配网络下实测对比，
+       OpenDTU 表（RFPDK 官方标定）0x8A18 的信号高于 RFPDK 导出 exp 的 0x7A17
+       （两值低字节几乎一致、高字节差 0x10），故最终采用 0x8A18。 */
+    case  20: word = 0x8A18; break;   /* 实测确定（exp 0x7A17 信号更低，已弃用） */
     default: return;                  /* 越界档位不改 */
     }
     uint8_t cmt4 = CMT2300A_ReadReg(CMT2300A_CUS_CMT4);
