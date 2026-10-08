@@ -1,6 +1,10 @@
 /*
  * config.h — 全局硬件 / 网络 / 默认参数配置
  * ESP32-S3 N16R8 + CMT2300A 射频遥控频率捕获仪
+ *
+ * 2026-08-14：网页/协议整体移植自参考工程 esp32s3-si4463-spectrum（
+ *   WebSocket 0xA5 频谱帧 + cfg/stat/hit/decode JSON + get/set/run/arm/
+ *   clear/baseline/save/reset 命令），扫描默认参数与参考工程保持一致。
  */
 #pragma once
 #include <Arduino.h>
@@ -34,6 +38,8 @@
 //   默认开：开箱即按一下遥控器即锁频解码。
 #define DEF_AUTO_DECODE 1
 // 实际解码窗口由 ook_decoder.h 的 OOK_DECODE_TIMEOUT_MS（1000ms）控制，见 runDecodeState。
+// 发射功率档位（dBm，-10~20，步进 1dB），回放发射时应用（见 CMT2300A_TxOokBegin）
+#define DEF_TX_POWER_DBM 20
 
 // ============ 快嗅探（单次按压即解码）参数 ============
 // 每个候选频点停留时间：PLL 重锁 + AGC 建立 + RSSI 读取。
